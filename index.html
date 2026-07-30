@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SGT Vistoria - Contas</title>
+
+  <!-- Bibliotecas para PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+  <!-- SDKs do Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background-color: #f8fafc; color: #1e293b; padding: 20px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { text-align: center; margin-bottom: 5px; color: #0f172a; }
+    .status-cloud { font-size: 0.8rem; text-align: center; color: #16a34a; font-weight: bold; margin-bottom: 20px; }
+
+    .cards-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .card { background: white; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; }
+    .card h3 { font-size: 0.75rem; color: #64748b; text-transform: uppercase; margin-bottom: 6px; font-weight: 700; }
+    .card p { font-size: 1.25rem; font-weight: 800; }
+    .card.green p { color: #16a34a; }
+    .card.red p { color: #dc2626; }
+    .card.blue p { color: #2563eb; }
+    .card.purple p { color: #7c3aed; }
+
+    .form-container { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #e2e8f0; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 10px; }
+    label { font-size: 0.8rem; font-weight: 600; color: #475569; display: block; margin-bottom: 4px; }
+    input, select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; }
+    
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
+    .btn { padding: 12px 16px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; flex: 1; min-width: 140px; font-size: 0.88rem; text-align: center; }
+    .btn-add { background: #2563eb; color: white; }
+    .btn-cfg { background: #475569; color: white; }
+    .btn-pdf-dia { background: #0284c7; color: white; }
+    .btn-pdf-mes { background: #059669; color: white; }
+    
+    .btn-filtro { background: #e2e8f0; color: #334155; padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+    .btn-filtro.active { background: #2563eb; color: white; border-color: #2563eb; }
+    .btn:hover, .btn-filtro:hover { opacity: 0.9; }
+
+    .table-header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
+    .filtros-grupo { display: flex; gap: 6px; }
+
+    .table-container { background: white; padding: 20px; border-radius: 10px; border: 1px solid #e2e8f0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; text-align: left; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem; }
+    th { background-color: #f1f5f9; color: #475569; }
+    .badge { padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
+    .badge.entrada { background: #dcfce7; color: #15803d; }
+    .badge.saida { background: #fee2e2; color: #b91c1c; }
+    .badge.deposito { background: #f3e8ff; color: #7c3aed; }
+    
+    .btn-edit { background: #f59e0b; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; margin-right: 4px; }
+    .btn-del { background: #ef4444; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; }
+
+    /* Estilos do Modal de Mensagem */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+    .modal-content { background: white; padding: 24px; border-radius: 12px; max-width: 500px; width: 90%; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+    .modal-content h3 { margin-bottom: 12px; color: #0f172a; font-size: 1.1rem; }
+    .modal-content textarea { width: 100%; height: 260px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-family: monospace; font-size: 0.9rem; resize: none; background: #f8fafc; color: #334155; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 15px; }
+    .btn-copy { background: #16a34a; color: white; }
+    .btn-close { background: #64748b; color: white; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>SGT Vistoria - Contas</h1>
+  <div class="status-cloud">☁️ Sincronizado em Tempo Real</div>
+
+  <div class="cards-summary">
+    <div class="card blue">
+      <h3>Saldo Conta Bancária</h3>
+      <p id="saldoBanco">R$ 0,00</p>
+    </div>
+    <div class="card purple">
+      <h3>Saldo em Dinheiro</h3>
+      <p id="saldoDinheiro">R$ 0,00</p>
+    </div>
+    <div class="card green">
+      <h3>Total Entradas</h3>
+      <p id="totalEntrada">R$ 0,00</p>
+    </div>
+    <div class="card red">
+      <h3>Total Saídas</h3>
+      <p id="totalSaida">R$ 0,00</p>
+    </div>
+  </div>
+
+  <div class="form-container">
+    <h2 id="tituloForm">Novo Lançamento</h2>
+    <form id="transacaoForm">
+      <input type="hidden" id="editId" value="" />
+
+      <div class="form-grid">
+        <div>
+          <label>Data</label>
+          <input type="date" id="data" onchange="atualizarTela()" required />
+        </div>
+        <div>
+          <label>Tipo</label>
+          <select id="tipo" onchange="verificarTipo()">
+            <option value="entrada">Entrada (+)</option>
+            <option value="saida">Saída (-)</option>
+            <option value="deposito">Depósito (Dinheiro ➔ Conta)</option>
+          </select>
+        </div>
+        <div>
+          <label>Descrição</label>
+          <input type="text" id="descricao" placeholder="Ex: Vistoria Fox..." required />
+        </div>
+        <div>
+          <label>Valor (R$)</label>
+          <input type="number" step="0.01" id="valor" placeholder="0.00" required />
+        </div>
+        <div id="campoMetodo">
+          <label>Forma de Pagto / Transferência</label>
+          <select id="metodo">
+            <option value="Pix">Pix (Conta Bancária)</option>
+            <option value="Transferência">Transferência Bancária</option>
+            <option value="Cartão">Cartão (Conta Bancária)</option>
+            <option value="Dinheiro">Dinheiro (Espécie)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit" id="btnSalvar" class="btn btn-add">+ Salvar Lançamento</button>
+        <button type="button" class="btn btn-cfg" onclick="definirSaldosIniciais()">⚙️ Definir Saldos Iniciais</button>
+        <button type="button" class="btn btn-pdf-dia" onclick="gerarPDF('dia')">📄 PDF Diário</button>
+        <button type="button" class="btn btn-pdf-mes" onclick="gerarPDF('mes')">📅 PDF Mensal</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="table-container">
+    <div class="table-header-flex">
+      <h2 id="tituloHistorico">Histórico do Dia</h2>
+      <div class="filtros-grupo">
+        <button class="btn-filtro active" id="btnFiltroDia" onclick="mudarModoFiltro('dia')">Dia</button>
+        <button class="btn-filtro" id="btnFiltroMes" onclick="mudarModoFiltro('mes')">Mês</button>
+        <button class="btn-filtro" id="btnFiltroTodos" onclick="mudarModoFiltro('todos')">Todos</button>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Tipo</th>
+          <th>Descrição</th>
+          <th>Forma</th>
+          <th>Valor</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaCorpo"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal com a mensagem pronta para copiar -->
+<div class="modal-overlay" id="modalMensagem">
+  <div class="modal-content">
+    <h3>📱 Mensagem de Fechamento de Caixa</h3>
+    <textarea id="textoMensagem" readonly></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-copy" id="btnCopiar" onclick="copiarTextoMensagem()">📋 Copiar Mensagem</button>
+      <button class="btn btn-close" onclick="fecharModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Configuração do Firebase Realtime Database
+  const firebaseConfig = {
+    apiKey: "AIzaSyDD9q0F6J58CYcmohwxL9cUPstXLYqLx9c",
+    authDomain: "velha-5cbdf.firebaseapp.com",
+    projectId: "velha-5cbdf",
+    storageBucket: "velha-5cbdf.firebasestorage.app",
+    messagingSenderId: "737198891994",
+    appId: "1:737198891994:web:235d794f63c147cd0716e3",
+    databaseURL: "https://velha-5cbdf-default-rtdb.firebaseio.com/"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  const vistoriasRef = db.ref("sgt_vistorias_contas");
+  const configRef = db.ref("sgt_config_saldos");
+
+  document.getElementById('data').valueAsDate = new Date();
+
+  let lancamentos = [];
+  let saldoInicialBanco = 0;
+  let saldoInicialDinheiro = 0;
+  let modoFiltro = 'dia';
+
+  const form = document.getElementById('transacaoForm');
+  const tabelaCorpo = document.getElementById('tabelaCorpo');
+
+  configRef.on('value', (snapshot) => {
+    const cfg = snapshot.val() || {};
+    saldoInicialBanco = cfg.banco || 0;
+    saldoInicialDinheiro = cfg.dinheiro || 0;
+    atualizarTela();
+  });
+
+  vistoriasRef.on('value', (snapshot) => {
+    lancamentos = [];
+    const data = snapshot.val();
+    if (data) {
+      Object.keys(data).forEach(key => {
+        lancamentos.push({ id: key, ...data[key] });
+      });
+    }
+    lancamentos.sort((a, b) => new Date(b.data) - new Date(a.data));
+    atualizarTela();
+  });
+
+  function formatarMoeda(valor) {
+    return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+
+  // Função para pegar a saudação de acordo com o horário atual
+  function obterSaudacao() {
+    const hora = new Date().getHours();
+    if (hora >= 5 && hora < 12) {
+      return "Bom dia!";
+    } else if (hora >= 12 && hora < 18) {
+      return "Boa tarde!";
+    } else {
+      return "Boa noite!";
+    }
+  }
+
+  function verificarTipo() {
+    const tipo = document.getElementById('tipo').value;
+    const campoMetodo = document.getElementById('campoMetodo');
+    if (tipo === 'deposito') {
+      campoMetodo.style.display = 'none';
+      document.getElementById('descricao').value = 'Depósito Dinheiro para Conta Bancária';
+    } else {
+      campoMetodo.style.display = 'block';
+      if(document.getElementById('descricao').value.startsWith('Depósito')) {
+        document.getElementById('descricao').value = '';
+      }
+    }
+  }
+
+  function mudarModoFiltro(modo) {
+    modoFiltro = modo;
+    
+    document.getElementById('btnFiltroDia').classList.remove('active');
+    document.getElementById('btnFiltroMes').classList.remove('active');
+    document.getElementById('btnFiltroTodos').classList.remove('active');
+
+    if (modo === 'dia') document.getElementById('btnFiltroDia').classList.add('active');
+    if (modo === 'mes') document.getElementById('btnFiltroMes').classList.add('active');
+    if (modo === 'todos') document.getElementById('btnFiltroTodos').classList.add('active');
+
+    atualizarTela();
+  }
+
+  function definirSaldosIniciais() {
+    let b = prompt("1/2 - Digite o SALDO INICIAL DA CONTA BANCÁRIA (R$):", saldoInicialBanco);
+    if (b === null) return;
+
+    let d = prompt("2/2 - Digite o SALDO INICIAL EM DINHEIRO EM ESPÉCIE (R$):", saldoInicialDinheiro);
+    if (d === null) return;
+    
+    configRef.set({
+      banco: parseFloat(b.replace(',', '.')) || 0,
+      dinheiro: parseFloat(d.replace(',', '.')) || 0
+    });
+    alert("Saldos iniciais da Conta e do Dinheiro salvos com sucesso!");
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const editId = document.getElementById('editId').value;
+    const tipo = document.getElementById('tipo').value;
+    
+    const itemDados = {
+      data: document.getElementById('data').value,
+      tipo: tipo,
+      descricao: document.getElementById('descricao').value,
+      valor: parseFloat(document.getElementById('valor').value),
+      metodo: tipo === 'deposito' ? 'Depósito' : document.getElementById('metodo').value
+    };
+
+    if (editId) {
+      vistoriasRef.child(editId).update(itemDados);
+      document.getElementById('editId').value = '';
+      document.getElementById('tituloForm').innerText = 'Novo Lançamento';
+      document.getElementById('btnSalvar').innerText = '+ Salvar Lançamento';
+    } else {
+      vistoriasRef.push(itemDados);
+    }
+
+    form.reset();
+    document.getElementById('data').valueAsDate = new Date();
+    verificarTipo();
+  });
+
+  function editarItem(id) {
+    const item = lancamentos.find(i => i.id === id);
+    if (item) {
+      document.getElementById('editId').value = item.id;
+      document.getElementById('data').value = item.data;
+      document.getElementById('tipo').value = item.tipo;
+      document.getElementById('descricao').value = item.descricao;
+      document.getElementById('valor').value = item.valor;
+      if(item.tipo !== 'deposito') document.getElementById('metodo').value = item.metodo;
+
+      verificarTipo();
+      document.getElementById('tituloForm').innerText = '✏️ Editando Lançamento';
+      document.getElementById('btnSalvar').innerText = 'Atualizar Lançamento';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
+  function removerItem(id) {
+    if (confirm("Deseja realmente excluir este lançamento?")) {
+      vistoriasRef.child(id).remove();
+    }
+  }
+
+  function atualizarTela() {
+    tabelaCorpo.innerHTML = '';
+
+    let totalEntrada = 0, totalSaida = 0;
+    let banco = saldoInicialBanco;
+    let dinheiro = saldoInicialDinheiro;
+
+    let ordemCronologica = [...lancamentos].sort((a, b) => new Date(a.data) - new Date(b.data));
+
+    ordemCronologica.forEach(item => {
+      if (item.tipo === 'entrada') {
+        totalEntrada += item.valor;
+        if (item.metodo === 'Dinheiro') {
+          dinheiro += item.valor;
+        } else {
+          banco += item.valor;
+        }
+      } else if (item.tipo === 'saida') {
+        totalSaida += item.valor;
+        banco -= item.valor;
+      } else if (item.tipo === 'deposito') {
+        dinheiro -= item.valor;
+        banco += item.valor;
+      }
+    });
+
+    const dataSelecionada = document.getElementById('data').value;
+    const [ano, mes, dia] = dataSelecionada ? dataSelecionada.split('-') : ['', '', ''];
+    let exibicaoLancamentos = lancamentos;
+
+    if (modoFiltro === 'dia' && dataSelecionada) {
+      exibicaoLancamentos = lancamentos.filter(item => item.data === dataSelecionada);
+      const dataFormatada = dataSelecionada.split('-').reverse().join('/');
+      document.getElementById('tituloHistorico').innerText = `Histórico do Dia (${dataFormatada})`;
+    } else if (modoFiltro === 'mes' && dataSelecionada) {
+      exibicaoLancamentos = lancamentos.filter(item => item.data.startsWith(`${ano}-${mes}`));
+      document.getElementById('tituloHistorico').innerText = `Histórico do Mês (${mes}/${ano})`;
+    } else {
+      document.getElementById('tituloHistorico').innerText = 'Histórico Completo (Todos os Dias)';
+    }
+
+    if (exibicaoLancamentos.length === 0) {
+      tabelaCorpo.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:15px;">Nenhum lançamento registrado para este filtro.</td></tr>`;
+    } else {
+      exibicaoLancamentos.forEach(item => {
+        const tr = document.createElement('tr');
+        const dataFormatada = item.data.split('-').reverse().join('/');
+        let badgeClass = item.tipo;
+        let tipoTexto = item.tipo === 'entrada' ? 'Entrada' : item.tipo === 'saida' ? 'Saída' : 'Depósito';
+
+        tr.innerHTML = `
+          <td>${dataFormatada}</td>
+          <td><span class="badge ${badgeClass}">${tipoTexto}</span></td>
+          <td>${item.descricao}</td>
+          <td>${item.metodo}</td>
+          <td>${formatarMoeda(item.valor)}</td>
+          <td>
+            <button class="btn-edit" onclick="editarItem('${item.id}')">Editar</button>
+            <button class="btn-del" onclick="removerItem('${item.id}')">Excluir</button>
+          </td>
+        `;
+        tabelaCorpo.appendChild(tr);
+      });
+    }
+
+    document.getElementById('saldoBanco').innerText = formatarMoeda(banco);
+    document.getElementById('saldoDinheiro').innerText = formatarMoeda(dinheiro);
+    document.getElementById('totalEntrada').innerText = formatarMoeda(totalEntrada);
+    document.getElementById('totalSaida').innerText = formatarMoeda(totalSaida);
+  }
+
+  function exibirModalMensagem(texto) {
+    document.getElementById('textoMensagem').value = texto;
+    document.getElementById('modalMensagem').style.display = 'flex';
+    document.getElementById('btnCopiar').innerText = "📋 Copiar Mensagem";
+  }
+
+  function fecharModal() {
+    document.getElementById('modalMensagem').style.display = 'none';
+  }
+
+  function copiarTextoMensagem() {
+    const areaTexto = document.getElementById('textoMensagem');
+    areaTexto.select();
+    areaTexto.setSelectionRange(0, 99999);
+
+    let copiadoComSucesso = false;
+
+    try {
+      copiadoComSucesso = document.execCommand('copy');
+    } catch (err) {
+      copiadoComSucesso = false;
+    }
+
+    if (!copiadoComSucesso && navigator.clipboard) {
+      navigator.clipboard.writeText(areaTexto.value).then(() => {
+        copiadoComSucesso = true;
+      });
+    }
+
+    const btn = document.getElementById('btnCopiar');
+    btn.innerText = "✅ Copiado!";
+    setTimeout(() => {
+      btn.innerText = "📋 Copiar Mensagem";
+    }, 2000);
+  }
+
+  function gerarPDF(modo) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const dataSelecionada = document.getElementById('data').value;
+    const [ano, mes, dia] = dataSelecionada.split('-');
+
+    const mesesNomes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    const nomeMesExtenso = mesesNomes[parseInt(mes) - 1];
+
+    let ordemCronologica = [...lancamentos].sort((a, b) => new Date(a.data) - new Date(b.data));
+
+    let initBanco = saldoInicialBanco;
+    let initDinheiro = saldoInicialDinheiro;
+    let entradasPix = 0, entradasDinheiro = 0;
+
+    let dadosFiltrados = [];
+    let tituloRel = "";
+    let nomeArquivo = "";
+
+    if (modo === 'dia') {
+      dadosFiltrados = lancamentos.filter(item => item.data === dataSelecionada);
+      tituloRel = `SGT VISTORIA - FECHAMENTO DIÁRIO (${dia}/${mes}/${ano})`;
+      nomeArquivo = `fechamento_dia_${dia}_de_${nomeMesExtenso.toLowerCase()}.pdf`;
+
+      ordemCronologica.forEach(i => {
+        if (i.data < dataSelecionada) {
+          if (i.tipo === 'entrada') {
+            if (i.metodo === 'Dinheiro') initDinheiro += i.valor;
+            else initBanco += i.valor;
+          } else if (i.tipo === 'saida') {
+            initBanco -= i.valor;
+          } else if (i.tipo === 'deposito') {
+            initDinheiro -= i.valor;
+            initBanco += i.valor;
+          }
+        }
+      });
+    } else {
+      dadosFiltrados = lancamentos.filter(item => item.data.startsWith(`${ano}-${mes}`));
+      tituloRel = `SGT VISTORIA - FECHAMENTO MENSAL (${nomeMesExtenso}/${ano})`;
+      nomeArquivo = `fechamento_mes_de_${nomeMesExtenso.toLowerCase()}.pdf`;
+
+      const inicioMes = `${ano}-${mes}-01`;
+      ordemCronologica.forEach(i => {
+        if (i.data < inicioMes) {
+          if (i.tipo === 'entrada') {
+            if (i.metodo === 'Dinheiro') initDinheiro += i.valor;
+            else initBanco += i.valor;
+          } else if (i.tipo === 'saida') {
+            initBanco -= i.valor;
+          } else if (i.tipo === 'deposito') {
+            initDinheiro -= i.valor;
+            initBanco += i.valor;
+          }
+        }
+      });
+    }
+
+    if (dadosFiltrados.length === 0) {
+      alert("Nenhum lançamento registrado para este período!");
+      return;
+    }
+
+    let entTotal = 0, saiTotal = 0;
+    let finalBanco = initBanco;
+    let finalDinheiro = initDinheiro;
+
+    dadosFiltrados.forEach(i => {
+      if (i.tipo === 'entrada') {
+        entTotal += i.valor;
+        if (i.metodo === 'Dinheiro') {
+          entradasDinheiro += i.valor;
+          finalDinheiro += i.valor;
+        } else {
+          entradasPix += i.valor;
+          finalBanco += i.valor;
+        }
+      } else if (i.tipo === 'saida') {
+        saiTotal += i.valor;
+        finalBanco -= i.valor;
+      } else if (i.tipo === 'deposito') {
+        finalDinheiro -= i.valor;
+        finalBanco += i.valor;
+      }
+    });
+
+    // Obtém a saudação conforme o horário atual
+    const saudacao = obterSaudacao();
+
+    // 1. GERA A MENSAGEM FORMATADA
+    const cabecalhoPeriodo = modo === 'dia' 
+      ? `Fechamento de Caixa – ${dia}/${mes}/${ano}`
+      : `Fechamento de Caixa – ${nomeMesExtenso} / ${ano}`;
+
+    const mensagemTexto = `${saudacao}\n\n` +
+      `${cabecalhoPeriodo}\n\n` +
+      `Saldo inicial:\n\n` +
+      `PIX (conta): ${formatarMoeda(initBanco)}\n` +
+      `Dinheiro: ${formatarMoeda(initDinheiro)}\n\n` +
+      `Entradas do dia:\n\n` +
+      `PIX (conta): ${formatarMoeda(entradasPix)}\n` +
+      `Dinheiro: ${formatarMoeda(entradasDinheiro)}\n\n` +
+      `Saldo final:\n\n` +
+      `PIX (conta): ${formatarMoeda(finalBanco)}\n` +
+      `Dinheiro: ${formatarMoeda(finalDinheiro)}\n\n` +
+      `Total em caixa ao final do dia: ${formatarMoeda(finalBanco + finalDinheiro)}\n\n` +
+      `Caixa conferido e fechado.`;
+
+    exibirModalMensagem(mensagemTexto);
+
+    // 2. GERA O PDF
+    doc.setFontSize(14);
+    doc.text(tituloRel, 14, 15);
+    doc.setFontSize(9);
+    doc.text(`Emitido em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 22);
+
+    doc.text(`Saldo Inicial Bancário: ${formatarMoeda(initBanco)} | Saldo Inicial Dinheiro: ${formatarMoeda(initDinheiro)}`, 14, 28);
+    doc.text(`Entradas Totais: ${formatarMoeda(entTotal)}`, 14, 34);
+    doc.text(`Saídas Totais: ${formatarMoeda(saiTotal)}`, 14, 40);
+    doc.text(`Faturamento Líquido: ${formatarMoeda(entTotal - saiTotal)}`, 14, 46);
+
+    const linhas = dadosFiltrados.map(i => [
+      i.data.split('-').reverse().join('/'),
+      i.tipo.toUpperCase(),
+      i.descricao,
+      i.metodo,
+      formatarMoeda(i.valor)
+    ]);
+
+    doc.autoTable({
+      startY: 52,
+      head: [['Data', 'Tipo', 'Descrição', 'Forma', 'Valor']],
+      body: linhas,
+      theme: 'grid',
+      didDrawPage: (data) => {
+        let str = 'Página ' + doc.internal.getNumberOfPages();
+        doc.setFontSize(8);
+        doc.text(str, data.settings.margin.left, doc.internal.pageSize.height - 10);
+      }
+    });
+
+    if (modo === 'mes') {
+      let finalY = doc.lastAutoTable.finalY + 15;
+      if (finalY > 240) { doc.addPage(); finalY = 20; }
+      
+      doc.setFontSize(11);
+      doc.text("Gráfico Resumo (Entradas vs Saídas vs Faturamento)", 14, finalY);
+      
+      let maxVal = Math.max(entTotal, saiTotal, Math.abs(entTotal - saiTotal), 100);
+      let barraEntrada = (entTotal / maxVal) * 90;
+      let barraSaida = (saiTotal / maxVal) * 90;
+      let barraLucro = (Math.max(0, entTotal - saiTotal) / maxVal) * 90;
+
+      doc.setFontSize(8);
+      doc.text(`Entradas: ${formatarMoeda(entTotal)}`, 14, finalY + 10);
+      doc.setFillColor(22, 163, 74);
+      doc.rect(60, finalY + 6, barraEntrada, 5, 'F');
+
+      doc.text(`Saídas: ${formatarMoeda(saiTotal)}`, 14, finalY + 20);
+      doc.setFillColor(220, 38, 38);
+      doc.rect(60, finalY + 16, barraSaida, 5, 'F');
+
+      doc.text(`Faturamento: ${formatarMoeda(entTotal - saiTotal)}`, 14, finalY + 30);
+      doc.setFillColor(37, 99, 235);
+      doc.rect(60, finalY + 26, barraLucro, 5, 'F');
+    }
+
+    doc.save(nomeArquivo);
+  }
+</script>
+
+</body>
+</html>
